@@ -60,15 +60,12 @@ const registerUser = asyncHandler(async (req, res) => {
 });
 
 const loginUser = asyncHandler(async (req, res) => {
-  const { email, username, password } = req.body;
-  if (!email && !username) {
-    throw new ApiError(400, 'Email or username is required');
+  const { email, password } = req.body;
+  if (!email ) {
+    throw new ApiError(400, 'Email is required');
   }
 
-  const loginUsername = username ? username.toLowerCase() : undefined;
-  const user = await User.findOne({
-    $or: [{ email }, { username: loginUsername }],
-  });
+  const user = await User.findOne({email});
   if (!user || !(await user.comparePassword(password))) {
     throw new ApiError(401, 'Invalid credentials');
   }
@@ -155,7 +152,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     };
 
     const { accessToken, newRefreshToken } =
-      await generateAccessAndRefereshTokens(user._id);
+      await generateAccessAndRefreshTokens(user._id);
 
     return res
       .status(200)
