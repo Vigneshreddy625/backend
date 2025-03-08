@@ -12,7 +12,6 @@ app.use(express.static('public'))
 app.use(cookieParser())
 
 import userRouter from "./routes/users.routes.js"
-import corsMiddleware from "./middlewares/cors.middleware.js"
 
 app.use("/api/v1/users", userRouter);
 
