@@ -1,9 +1,10 @@
 import cors from "cors";
 
 const allowedOrigins = [
-    'https://revispy-nine.vercel.app/',
-    'http://localhost:5173', 
-  ];
+  "https://revispy-nine.vercel.app",
+  "http://localhost:5173",
+];
+
 
 const corsMiddleware = cors({
   origin: function (origin, callback) {
