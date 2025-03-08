@@ -4,9 +4,9 @@ import {
   loginUser,
   logoutUser,
   getCurrentUser,
-  refreshAccessToken,
 } from '../controllers/user.controller.js';
 import { upload } from '../middlewares/multer.middleware.js';
+import { requireAuth } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
@@ -22,7 +22,6 @@ router.route('/register').post(
 
 router.route("/login").post(loginUser);
 router.route("/current-user").get(getCurrentUser);
-router.route("/logout").post(logoutUser);
-router.route("/refreshtoken").post(refreshAccessToken);
+router.route("/logout").post(requireAuth, logoutUser);
 
 export default router;

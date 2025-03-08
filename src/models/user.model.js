@@ -1,5 +1,4 @@
 import mongoose, { Schema } from 'mongoose';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 
@@ -43,10 +42,6 @@ const UserSchema = new Schema({
     default: 'user',
   },
 
-  refreshToken: {
-    type: String,
-  },
-
   resetPasswordToken: {
     type: String,
   },
@@ -82,26 +77,6 @@ UserSchema.pre('save', async function (next) {
 
 UserSchema.methods.comparePassword = async function (password) {
   return await bcrypt.compare(password, this.password);
-};
-
-UserSchema.methods.generateAccessToken = function () {
-  return jwt.sign(
-    {
-      _id: this._id,
-      email: this.email,
-      username: this.username,
-    },
-    process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN }
-  );
-};
-
-UserSchema.methods.generateRefreshToken = function () {
-  return jwt.sign(
-    { _id: this._id },
-    process.env.REFRESH_TOKEN_SECRET,
-    { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN }
-  );
 };
 
 UserSchema.methods.generatePasswordResetToken = function () {
