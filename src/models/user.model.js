@@ -54,10 +54,12 @@ const UserSchema = new Schema({
     type: Date,
   },
 
-  wishlist: [{
-    type: Schema.Types.ObjectId,
-    ref: 'Product',
-  }],
+  wishlist: [
+    {
+      type: Schema.Types.ObjectId,
+      ref: 'Product',
+    },
+  ],
 
   isVerified: {
     type: Boolean,
@@ -67,22 +69,20 @@ const UserSchema = new Schema({
   failedLoginAttempts: {
     type: Number,
     default: 0,
-  },
+  }
+
 });
 
-// Hashing password before saving
 UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 10);
   next();
 });
 
-// Method to compare passwords
 UserSchema.methods.comparePassword = async function (password) {
   return await bcrypt.compare(password, this.password);
 };
 
-// Method to generate access token
 UserSchema.methods.generateAccessToken = function () {
   return jwt.sign(
     {
@@ -95,7 +95,6 @@ UserSchema.methods.generateAccessToken = function () {
   );
 };
 
-// Method to generate refresh token
 UserSchema.methods.generateRefreshToken = function () {
   return jwt.sign(
     { _id: this._id },
@@ -104,11 +103,10 @@ UserSchema.methods.generateRefreshToken = function () {
   );
 };
 
-// Method to generate password reset token
 UserSchema.methods.generatePasswordResetToken = function () {
   const resetToken = crypto.randomBytes(32).toString('hex');
   this.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-  this.resetPasswordExpires = Date.now() + 3600000; // Token valid for 1 hour
+  this.resetPasswordExpires = Date.now() + 3600000; 
   return resetToken;
 };
 
