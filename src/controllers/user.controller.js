@@ -61,9 +61,7 @@ const loginUser = asyncHandler(async (req, res) => {
   }
 
   req.session.user = {
-    id: user._id,
-    email: user.email,
-    username: user.username,
+    user
   };
 
   return res
