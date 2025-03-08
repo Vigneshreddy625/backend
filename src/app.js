@@ -2,6 +2,7 @@ import express from "express"
 import cookieParser from "cookie-parser"
 import corsMiddleware from "./middlewares/cors.middleware.js"
 import MongoStore from "connect-mongo"
+import session from "express-session"
 
 const app = express()
 
