@@ -8,7 +8,11 @@ dotenv.config('./.env')
 
 const app = express()
 
-app.use(corsMiddleware)
+app.use(cors({ 
+    origin: "http://localhost:5173", 
+    methods: "GET,POST,PUT,DELETE",
+    allowedHeaders: "Content-Type, Authorization"
+  }));
 
 app.use(express.json({limit: '16kb'}))
 app.use(express.urlencoded({extended: true}))
