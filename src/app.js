@@ -1,6 +1,5 @@
 import express from "express"
 import cookieParser from "cookie-parser"
-import corsMiddleware from "./middlewares/cors.middleware.js"
 
 import dotenv from "dotenv"
 
