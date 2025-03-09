@@ -4,25 +4,29 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import jwt from 'jsonwebtoken';
 
 const generateAccessAndRefreshToken = async (userId) => {
-    try {
-      const user = await User.findById(userId);
-      
-      if (!user) {
-        throw new ApiError(404, "User not found");
-      }
-      
-      const accessToken = user.generateAccessToken();
-      const refreshToken = user.generateRefreshToken();
-      
-      user.refreshToken = refreshToken;
-      
-      await user.save({ validateBeforeSave: false });
-      
-      return { accessToken, refreshToken };
-    } catch (error) {
-      throw new ApiError(500, "Something went wrong while generating refresh and access token: " + error.message);
+  try {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
     }
-  };
+
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+
+    await user.save({ validateBeforeSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new ApiError(
+      500,
+      'Something went wrong while generating refresh and access token: ' +
+        error.message
+    );
+  }
+};
 
 const registerUser = async (req, res) => {
   const { email, password, fullName } = req.body;
@@ -86,7 +90,8 @@ const loginUser = async (req, res) => {
   // Set cookies options
   const options = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
+    sameSite: 'None',
   };
 
   return res
@@ -153,6 +158,9 @@ const refreshAccessToken = async (req, res) => {
 
     const user = await User.findById(decodedToken?._id);
 
+    console.log('Incoming Refresh Token:', incomingRefreshToken);
+    console.log('Stored Refresh Token:', user?.refreshToken);
+
     if (!user) {
       throw new ApiError(401, 'Invalid refresh token');
     }
@@ -189,4 +197,10 @@ const refreshAccessToken = async (req, res) => {
   }
 };
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken, getCurrentUser };
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  getCurrentUser,
+};
