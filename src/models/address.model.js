@@ -14,16 +14,20 @@ const addressSchema = new mongoose.Schema(
           enum: ["home", "work"],
           required: true,
         },
+        name:{type: String, required: true},
+        mobile:{type: Number, required: true},
+        houseNo: {type: String},
+        locality:{type:String},
         street: { type: String, required: true },
         city: { type: String, required: true },
         state: { type: String, required: true },
         country: { type: String, required: true },
-        postalCode: { type: String, required: true },
+        postalCode: { type: Number, required: true },
       },
     ],
   },
   { timestamps: true }
 );
 
-const Address = mongoose.model("Address", addressSchema);
-export default Address;
+export const Address = mongoose.model("Address", addressSchema);
+

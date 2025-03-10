@@ -27,8 +27,10 @@ app.use(cookieParser())
 
 
 import userRouter from "./routes/users.routes.js"
+import addressRouter from "./routes/address.routes.js"
 
 app.use("/api/v1/users", userRouter);
+app.use("/api/v1/addresses", addressRouter);
 
 
 export { app }
