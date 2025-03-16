@@ -10,7 +10,7 @@ const productList = async (req, res, next) => {
       return next(new ApiError(404, 'No Products found'));
     }
     
-    res.status(200).json(new ApiResponse(200, products.data, "Products retrieved successfully")); 
+    res.status(200).json(new ApiResponse(200, products, "Products retrieved successfully")); 
   } catch (error) {
     next(new ApiError(500, "Internal server error", error));
   }
