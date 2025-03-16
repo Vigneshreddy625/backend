@@ -4,9 +4,9 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 
 const createAddress = async (req, res, next) => {
     try {
-        const { type, name, mobile, street, city, state, postalCode, country, houseNo, locality } = req.body;
+        const { type, name, mobile, street, city, state, postalCode, country, houseNo, district, locality } = req.body;
 
-        if (!type || !name || !mobile || !street || !city || !state || !postalCode || !country) {
+        if (!type || !name || !mobile || !street || !city || !state || !postalCode ||!district || !country) {
             return next(new ApiError(400, "All fields are required"));
         }
 
@@ -15,10 +15,10 @@ const createAddress = async (req, res, next) => {
         if (!address) {
             address = new Address({
                 user: req.user.id,
-                addresses: [{ type, name, mobile, street, city, state, postalCode, country, houseNo, locality }],
+                addresses: [{ type, name, mobile, street, city, state, postalCode, country, district, houseNo, locality }],
             });
         } else {
-            address.addresses.push({ type, name, mobile, street, city, state, postalCode, country, houseNo, locality });
+            address.addresses.push({ type, name, mobile, street, city, state, postalCode, district, country, houseNo, locality });
         }
 
         await address.save();
@@ -43,7 +43,7 @@ const getAddresses = async (req, res, next) => {
 const updateAddress = async (req, res, next) => {
     try {
         const { id: addressId } = req.params;
-        const { type, name, mobile, street, city, state, postalCode, country, houseNo, locality } = req.body;
+        const { type, name, mobile, street, city, state, postalCode, country, houseNo, district, locality } = req.body;
 
         let address = await Address.findOne({ user: req.user.id });
 
@@ -57,7 +57,7 @@ const updateAddress = async (req, res, next) => {
             return next(new ApiError(404, "Address not found"));
         }
 
-        address.addresses[addressIndex] = { _id: addressId, type, name, mobile, street, city, state, postalCode, country, houseNo, locality };
+        address.addresses[addressIndex] = { _id: addressId, type, name, mobile, street, city, district, state, postalCode, country, houseNo, locality };
 
         await address.save();
         res.status(200).json(new ApiResponse(200, address.addresses, "Address updated successfully")); 
