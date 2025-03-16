@@ -22,7 +22,7 @@ const createAddress = async (req, res, next) => {
         }
 
         await address.save();
-        res.status(201).json(new ApiResponse(201, address, "Address added successfully"));
+        res.status(201).json(new ApiResponse(201, address.addresses, "Address added successfully")); 
     } catch (error) {
         next(new ApiError(500, "Internal server error", error));
     }
@@ -30,11 +30,11 @@ const createAddress = async (req, res, next) => {
 
 const getAddresses = async (req, res, next) => {
     try {
-        const addresses = await Address.findOne({ user: req.user.id });
-        if (!addresses) {
+        const address = await Address.findOne({ user: req.user.id });
+        if (!address) {
             return next(new ApiError(404, "No addresses found"));
         }
-        res.status(200).json(new ApiResponse(200, addresses, "Addresses retrieved successfully"));
+        res.status(200).json(new ApiResponse(200, address.addresses, "Addresses retrieved successfully")); 
     } catch (error) {
         next(new ApiError(500, "Internal server error", error));
     }
@@ -58,9 +58,9 @@ const updateAddress = async (req, res, next) => {
         }
 
         address.addresses[addressIndex] = { _id: addressId, type, name, mobile, street, city, state, postalCode, country, houseNo, locality };
-        
+
         await address.save();
-        res.status(200).json(new ApiResponse(200, address, "Address updated successfully"));
+        res.status(200).json(new ApiResponse(200, address.addresses, "Address updated successfully")); 
     } catch (error) {
         next(new ApiError(500, "Internal server error", error));
     }
@@ -68,7 +68,7 @@ const updateAddress = async (req, res, next) => {
 
 const deleteAddress = async (req, res, next) => {
     try {
-        const { id: addressId } = req.params; 
+        const { id: addressId } = req.params;
 
         const address = await Address.findOne({ user: req.user.id });
 
@@ -89,6 +89,4 @@ const deleteAddress = async (req, res, next) => {
         next(new ApiError(500, "Internal server error", error));
     }
 };
-
-
 export { createAddress, getAddresses, updateAddress, deleteAddress };

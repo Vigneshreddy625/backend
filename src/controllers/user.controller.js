@@ -87,7 +87,6 @@ const loginUser = async (req, res) => {
     '-password -refreshToken'
   );
 
-  // Set cookies options
   const options = {
     httpOnly: true,
     secure: true,
@@ -132,6 +131,7 @@ const logoutUser = async (req, res) => {
 
   const options = {
     httpOnly: true,
+    sameSite: 'None',
     secure: process.env.NODE_ENV === 'production',
   };
 
