@@ -204,10 +204,37 @@ const refreshAccessToken = async (req, res) => {
   }
 };
 
+const deleteUser = async (req, res, next) => {
+  try {
+    const { id: userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return next(new ApiError(400, "Invalid user ID"));
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return next(new ApiError(404, "No User Found"));
+    }
+
+    if (req.user.id.toString() !== userId && req.user.role !== "admin") {
+      return next(new ApiError(403, "You are not authorized to delete this user"));
+    }
+
+    await user.deleteOne();
+
+    res.status(200).json(new ApiResponse(200, null, "User deleted successfully"));
+  } catch (error) {
+    next(new ApiError(500, "Internal server error", error));
+  }
+};
+
 export {
   registerUser,
   loginUser,
   logoutUser,
   refreshAccessToken,
   getCurrentUser,
+  deleteUser
 };
