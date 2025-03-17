@@ -111,10 +111,17 @@ const loginUser = async (req, res) => {
 };
 
 const getCurrentUser = async (req, res) => {
+  if (!req.user) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, 'No user logged in'));
+  }
+
   return res
     .status(200)
     .json(new ApiResponse(200, req.user, 'Current user fetched successfully'));
 };
+
 
 const logoutUser = async (req, res) => {
   await User.findByIdAndUpdate(
