@@ -16,6 +16,6 @@ router.route("/login").post(loginUser);
 router.route("/current-user").get(verifyJWT, getCurrentUser);
 router.route("/logout").post(verifyJWT, logoutUser);
 router.route("/refresh-token").post(refreshAccessToken);
-router.route("/delete-user").post(verifyJWT, deleteUser)
+router.route("/delete-user/:id").post(verifyJWT, deleteUser)
 
 export default router;

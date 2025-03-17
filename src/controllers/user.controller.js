@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { User } from '../models/user.model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
@@ -206,26 +207,53 @@ const refreshAccessToken = async (req, res) => {
 
 const deleteUser = async (req, res, next) => {
   try {
+    console.log("Delete user request received", { params: req.params, user: req.user });
+    
     const { id: userId } = req.params;
+    console.log("User ID to delete:", userId);
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return next(new ApiError(400, "Invalid user ID"));
     }
 
+    if (!req.user) {
+      console.error("req.user is undefined or null");
+      return next(new ApiError(401, "Authentication required"));
+    }
+
+    console.log("Authenticated user:", {
+      id: req.user._id,
+      role: req.user.role
+    });
+
     const user = await User.findById(userId);
+    console.log("User found:", user ? true : false);
 
     if (!user) {
       return next(new ApiError(404, "No User Found"));
     }
 
-    if (req.user.id.toString() !== userId && req.user.role !== "admin") {
+    const requesterId = req.user._id.toString();
+    const targetId = userId.toString();
+    
+    console.log("Comparing IDs:", {
+      requesterId,
+      targetId,
+      isAdmin: req.user.role === "admin"
+    });
+
+    if (requesterId !== targetId && req.user.role !== "admin") {
       return next(new ApiError(403, "You are not authorized to delete this user"));
     }
 
+    console.log("Permission check passed, proceeding with deletion");
+    
     await user.deleteOne();
+    console.log("User deleted successfully");
 
     res.status(200).json(new ApiResponse(200, null, "User deleted successfully"));
   } catch (error) {
+    console.error("Error in deleteUser:", error);
     next(new ApiError(500, "Internal server error", error));
   }
 };
