@@ -9,7 +9,8 @@ export const verifyJWT = async (req, res, next) => {
       req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
-      throw new ApiError(401, 'Unauthorized request');
+      req.user = null;
+      return next();
     }
 
     const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
@@ -25,6 +26,7 @@ export const verifyJWT = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    return next (new ApiError(401, error?.message || 'Invalid access token'));
+    req.user = null;
+    return next();
   }
 };
