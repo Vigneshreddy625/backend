@@ -3,8 +3,8 @@ import {
   addToWishlist,
   removeFromWishlist,
   getUserWishlist,
-} from '../controllers/wishlist.controller';
-import { verifyJWT } from '../middlewares/auth.middleware';
+} from '../controllers/wishlist.controller.js';
+import { verifyJWT } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
