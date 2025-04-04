@@ -8,10 +8,7 @@ function isValidObjectId(id) {
 }
 
 async function populateCart(cart) {
-  return await cart.populate({
-    path: "items.product",
-    select: "name price imageUrl stock",
-  });
+  return await cart.populate("items.product"); 
 }
 
 async function getOrCreateCart(userId) {
