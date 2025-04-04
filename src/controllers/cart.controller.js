@@ -80,7 +80,6 @@ export async function addItem(req, res) {
 
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ message: "Product not found" });
-    if (product.stock < quantity) return res.status(400).json({ message: "Not enough stock", availableStock: product.stock });
 
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -98,13 +97,7 @@ export async function addItem(req, res) {
 
       const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
       if (itemIndex > -1) {
-        const newQty = cart.items[itemIndex].quantity + quantity;
-        if (newQty > product.stock) {
-          await session.abortTransaction();
-          session.endSession();
-          return res.status(400).json({ message: "Quantity exceeds stock", availableStock: product.stock });
-        }
-        cart.items[itemIndex].quantity = newQty;
+        cart.items[itemIndex].quantity += quantity;
       } else {
         cart.items.push({ product: productId, quantity });
       }
