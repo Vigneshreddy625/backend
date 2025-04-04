@@ -1,5 +1,5 @@
-import Cart from "../models/cart.model.js"
-import Product from "../models/product.model.js"
+import {Cart} from "../models/cart.model.js"
+import {Product} from "../models/product.model.js"
 import mongoose from "mongoose";
 import { validationResult } from "express-validator";
 
@@ -140,8 +140,6 @@ export async function updateItemQuantity(req, res) {
     } else {
       const product = await Product.findById(productId);
       if (!product) return res.status(404).json({ message: "Product not found" });
-      if (product.stock < quantity) return res.status(400).json({ message: "Not enough stock", availableStock: product.stock });
-      item.quantity = quantity;
     }
 
     await calculateCartTotals(cart);
