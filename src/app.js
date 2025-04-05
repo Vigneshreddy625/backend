@@ -8,16 +8,23 @@ dotenv.config('./.env')
 
 const app = express()
 
+const allowedOrigins = [
+  "http://localhost:5173",             
+  process.env.FRONTEND_URL, 
+];
+
 app.use(cors({
   origin: (origin, callback) => {
-    callback(null, origin || "*"); 
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
   },
   credentials: true,
   methods: "GET, POST, PUT, DELETE",
   allowedHeaders: "Content-Type, Authorization"
 }));
-
-
 
 app.use(express.json({limit: '16kb'}))
 app.use(express.urlencoded({extended: true}))
@@ -34,9 +41,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-
-
-
 import userRouter from "./routes/users.routes.js"
 import addressRouter from "./routes/address.routes.js"
 import productRouter from "./routes/products.routes.js"
@@ -48,6 +52,5 @@ app.use("/api/v1/addresses", addressRouter);
 app.use("/api/v1/products", productRouter);
 app.use("/api/v1/wishlist", wishlistRouter);
 app.use("/api/v1/cart", cartRouter);
-
 
 export { app }
