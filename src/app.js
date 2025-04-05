@@ -10,7 +10,7 @@ const app = express()
 
 const allowedOrigins = [
   "http://localhost:5173",             
-  process.env.FRONTEND_URL, 
+  "https://revispy-nine.vercel.app", 
 ];
 
 app.use(cors({
