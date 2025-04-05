@@ -1,18 +1,14 @@
-import {Cart} from "../models/cart.model.js"
-import {Product} from "../models/product.model.js"
+import { Cart } from "../models/cart.model.js";
+import { Product } from "../models/product.model.js";
 import mongoose from "mongoose";
 import { validationResult } from "express-validator";
-
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
 async function populateCart(cart) {
-  return await cart.populate({
-    path: "items.product",
-    select: "name price imageUrl stock",
-  });
+  return await cart.populate("items.product"); 
 }
 
 async function getOrCreateCart(userId) {
@@ -35,7 +31,7 @@ async function calculateCartTotals(cart) {
   const taxRate = 0.07;
   const tax = subtotal * taxRate;
   let discount = 0;
-  if (cart.promoCode && cart.promoCode.code) {
+  if (cart.promoCode?.code) {
     discount = cart.promoCode.discountType === "percentage"
       ? (subtotal * cart.promoCode.discount) / 100
       : cart.promoCode.discount;
@@ -56,11 +52,11 @@ function handleError(error, res, operation) {
   });
 }
 
-
 export async function getUserCart(req, res) {
   try {
-    const cart = await getOrCreateCart(req.user.id);
+    let cart = await getOrCreateCart(req.user.id);
     await calculateCartTotals(cart);
+    cart = await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "fetch cart");
@@ -72,15 +68,13 @@ export async function addItem(req, res) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { productId, quantity = 1 } = req.body;
+    const { productId } = req.body;  // 🔥 Only `productId` is sent, default quantity is 1
     const userId = req.user.id;
 
     if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
-    if (!Number.isInteger(quantity) || quantity < 1) return res.status(400).json({ message: "Invalid quantity" });
 
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ message: "Product not found" });
-    if (product.stock < quantity) return res.status(400).json({ message: "Not enough stock", availableStock: product.stock });
 
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -98,15 +92,9 @@ export async function addItem(req, res) {
 
       const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
       if (itemIndex > -1) {
-        const newQty = cart.items[itemIndex].quantity + quantity;
-        if (newQty > product.stock) {
-          await session.abortTransaction();
-          session.endSession();
-          return res.status(400).json({ message: "Quantity exceeds stock", availableStock: product.stock });
-        }
-        cart.items[itemIndex].quantity = newQty;
+        cart.items[itemIndex].quantity += 1;
       } else {
-        cart.items.push({ product: productId, quantity });
+        cart.items.push({ product: productId, quantity: 1 });
       }
 
       await calculateCartTotals(cart);
@@ -114,7 +102,8 @@ export async function addItem(req, res) {
       await session.commitTransaction();
       session.endSession();
 
-      return res.status(200).json(await populateCart(cart));
+      cart = await populateCart(cart);
+      return res.status(200).json(cart);
     } catch (err) {
       await session.abortTransaction();
       session.endSession();
@@ -131,20 +120,20 @@ export async function updateItemQuantity(req, res) {
     if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
     if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ message: "Invalid quantity" });
 
-    const cart = await getOrCreateCart(req.user.id);
+    let cart = await getOrCreateCart(req.user.id);
     const item = cart.items.find(item => item.product.toString() === productId);
     if (!item) return res.status(404).json({ message: "Item not found in cart" });
 
     if (quantity === 0) {
       cart.items = cart.items.filter(item => item.product.toString() !== productId);
     } else {
-      const product = await Product.findById(productId);
-      if (!product) return res.status(404).json({ message: "Product not found" });
+      item.quantity = quantity;
     }
 
     await calculateCartTotals(cart);
     await cart.save();
-    return res.status(200).json(await populateCart(cart));
+    cart = await populateCart(cart);
+    return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "update item quantity");
   }
@@ -155,14 +144,13 @@ export async function removeItem(req, res) {
     const { productId } = req.params;
     if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
 
-    const cart = await getOrCreateCart(req.user.id);
-    const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
-    if (itemIndex === -1) return res.status(404).json({ message: "Item not found in cart" });
+    let cart = await getOrCreateCart(req.user.id);
+    cart.items = cart.items.filter(item => item.product.toString() !== productId);
 
-    cart.items.splice(itemIndex, 1);
     await calculateCartTotals(cart);
     await cart.save();
-    return res.status(200).json(await populateCart(cart));
+    cart = await populateCart(cart);
+    return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "remove item");
   }
@@ -175,11 +163,13 @@ export async function applyPromoCode(req, res) {
       return res.status(400).json({ message: "Invalid promo code details" });
     }
 
-    const cart = await getOrCreateCart(req.user.id);
+    let cart = await getOrCreateCart(req.user.id);
     cart.promoCode = { code, discount, discountType };
+
     await calculateCartTotals(cart);
     await cart.save();
-    return res.status(200).json(await populateCart(cart));
+    cart = await populateCart(cart);
+    return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "apply promo code");
   }
@@ -188,20 +178,17 @@ export async function applyPromoCode(req, res) {
 export async function updateShipping(req, res) {
   try {
     const { method } = req.body;
-    const shippingOptions = {
-      Standard: 5.99,
-      Express: 11.99,
-    };
+    const shippingOptions = { Standard: 5.99, Express: 11.99 };
 
-    if (!shippingOptions[method]) {
-      return res.status(400).json({ message: "Invalid shipping method" });
-    }
+    if (!shippingOptions[method]) return res.status(400).json({ message: "Invalid shipping method" });
 
-    const cart = await getOrCreateCart(req.user.id);
+    let cart = await getOrCreateCart(req.user.id);
     cart.shipping = { method, cost: shippingOptions[method] };
+
     await calculateCartTotals(cart);
     await cart.save();
-    return res.status(200).json(await populateCart(cart));
+    cart = await populateCart(cart);
+    return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "update shipping");
   }
@@ -209,13 +196,15 @@ export async function updateShipping(req, res) {
 
 export async function clearCart(req, res) {
   try {
-    const cart = await getOrCreateCart(req.user.id);
+    let cart = await getOrCreateCart(req.user.id);
     cart.items = [];
     cart.promoCode = { code: null, discount: 0, discountType: "amount" };
     cart.shipping = { method: "Standard", cost: 5.99 };
+
     await calculateCartTotals(cart);
     await cart.save();
-    return res.status(200).json(await populateCart(cart));
+    cart = await populateCart(cart);
+    return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "clear cart");
   }
