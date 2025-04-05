@@ -9,19 +9,21 @@ dotenv.config('./.env')
 const app = express()
 
 const allowedOrigins = [
-  "http://localhost:5173/",             
-  "https://revispy-nine.vercel.app/", 
+  'http://localhost:5173',
+  'https://revispy-nine.vercel.app/'
 ];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
   }
-}));
+
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Credentials', 'true'); 
+  next();
+});
+
 
 app.use(express.json({limit: '16kb'}))
 app.use(express.urlencoded({extended: true}))
