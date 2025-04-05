@@ -9,8 +9,8 @@ dotenv.config('./.env')
 const app = express()
 
 const allowedOrigins = [
-  "http://localhost:5173",             
-  "https://revispy-nine.vercel.app", 
+  "http://localhost:5173/",             
+  "https://revispy-nine.vercel.app/", 
 ];
 
 app.use(cors({
