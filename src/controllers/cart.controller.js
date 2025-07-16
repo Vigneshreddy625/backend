@@ -37,8 +37,10 @@ export async function addItem(req, res) {
 
   try {
     let cart = await Cart.findOne({ user: userId }).session(session);
+
     if (!cart) {
       cart = createEmptyCart(userId);
+      await cart.save({ session }); // ✅ Save cart if it's newly created
     }
 
     const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);

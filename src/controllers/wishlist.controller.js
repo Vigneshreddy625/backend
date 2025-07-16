@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 const addToWishlist = async (req, res, next) => {
     try {
         const { productId } = req.body;
-        const userId = req.user?._id; 
+        const userId = req.user?._id || req.user?.id;
 
         if (!userId) {
             return next(new ApiError(401, "Unauthorized: User not authenticated"));
@@ -21,11 +21,15 @@ const addToWishlist = async (req, res, next) => {
         if (!wishlist) {
             wishlist = await Wishlist.create({
                 user: userId,
-                items: []
+                items: [],
             });
         }
 
-        if (wishlist.items.includes(productId)) {
+        const alreadyExists = wishlist.items.some(
+            (item) => item.toString() === productId
+        );
+
+        if (alreadyExists) {
             return res.status(200).json(new ApiResponse(200, wishlist.items, "Product already in wishlist"));
         }
 
@@ -35,6 +39,7 @@ const addToWishlist = async (req, res, next) => {
         return res.status(200).json(new ApiResponse(200, wishlist.items, "Product added to wishlist successfully"));
 
     } catch (error) {
+        console.error("Add to wishlist error:", error);
         return next(new ApiError(500, "Failed to add product to wishlist", error));
     }
 };

@@ -43,7 +43,7 @@ const createAddress = async (req, res, next) => {
 // READ Addresses
 const getAddresses = async (req, res, next) => {
   try {
-    const address = await Address.findOne({ user: req.user.id }, { addresses: 1 }).lean();
+    const address = await Address.findOne({ user: req.user.id }, { addresses: 1 })
 
     if (!address || address.addresses.length === 0) {
       return next(new ApiError(404, "No addresses found"));
@@ -51,7 +51,7 @@ const getAddresses = async (req, res, next) => {
 
     return res.status(200).json(new ApiResponse(200, address.addresses, "Addresses retrieved successfully"));
   } catch (error) {
-    return next(new ApiError(500, "Internal server error", error));
+    return next(new ApiError(500, "User not authorized", error));
   }
 };
 
