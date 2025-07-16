@@ -2,113 +2,87 @@ import { Address } from "../models/address.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
-// CREATE Address
 const createAddress = async (req, res, next) => {
   try {
-    const {
-      type, name, mobile, street, city, state, postalCode,
-      country, houseNo, district, locality
-    } = req.body;
+    const { type, name, mobile, street, city, state, postalCode, country, houseNo, district, locality } = req.body;
 
     if (!type || !name || !mobile || !street || !city || !state || !postalCode || !district || !country) {
-      return next(new ApiError(400, "All required fields must be provided"));
+      return next(new ApiError(400, "All fields are required"));
     }
 
-    const addressData = {
-      type, name, mobile, street, city, state, postalCode,
-      country, houseNo, district, locality
-    };
+    const addressData = { type, name, mobile, street, city, state, postalCode, country, houseNo, district, locality };
 
-    const existing = await Address.exists({ user: req.user.id });
-
-    if (!existing) {
-      await Address.create({
-        user: req.user.id,
-        addresses: [addressData],
-      });
-    } else {
-      await Address.updateOne(
-        { user: req.user.id },
-        { $push: { addresses: addressData } }
-      );
-    }
-
-    const updated = await Address.findOne({ user: req.user.id }, { addresses: 1 });
-    return res.status(201).json(new ApiResponse(201, updated.addresses, "Address added successfully"));
-  } catch (error) {
-    return next(new ApiError(500, "Internal server error", error));
-  }
-};
-
-// READ Addresses
-const getAddresses = async (req, res, next) => {
-  try {
-    const address = await Address.findOne({ user: req.user.id }, { addresses: 1 })
-
-    if (!address || address.addresses.length === 0) {
-      return next(new ApiError(404, "No addresses found"));
-    }
-
-    return res.status(200).json(new ApiResponse(200, address.addresses, "Addresses retrieved successfully"));
-  } catch (error) {
-    return next(new ApiError(500, "User not authorized", error));
-  }
-};
-
-// UPDATE Address
-const updateAddress = async (req, res, next) => {
-  try {
-    const { id: addressId } = req.params;
-    const {
-      type, name, mobile, street, city, state, postalCode,
-      country, houseNo, district, locality
-    } = req.body;
-
-    const updatedData = {
-      _id: addressId,
-      type, name, mobile, street, city, state, postalCode,
-      country, houseNo, district, locality
-    };
-
-    const result = await Address.updateOne(
-      { user: req.user.id, "addresses._id": addressId },
-      { $set: { "addresses.$": updatedData } }
-    );
-
-    if (result.matchedCount === 0) {
-      return next(new ApiError(404, "Address not found"));
-    }
-
-    const updated = await Address.findOne({ user: req.user.id }, { addresses: 1 });
-    return res.status(200).json(new ApiResponse(200, updated.addresses, "Address updated successfully"));
-  } catch (error) {
-    return next(new ApiError(500, "Internal server error", error));
-  }
-};
-
-// DELETE Address
-const deleteAddress = async (req, res, next) => {
-  try {
-    const { id: addressId } = req.params;
-
-    const result = await Address.updateOne(
+    const addressDoc = await Address.findOneAndUpdate(
       { user: req.user.id },
-      { $pull: { addresses: { _id: addressId } } }
+      { $push: { addresses: addressData } },
+      { new: true, upsert: true }
     );
 
-    if (result.modifiedCount === 0) {
-      return next(new ApiError(404, "Address not found"));
-    }
-
-    return res.status(200).json(new ApiResponse(200, null, "Address deleted successfully"));
+    res.status(201).json(new ApiResponse(201, addressDoc.addresses, "Address added successfully"));
   } catch (error) {
-    return next(new ApiError(500, "Internal server error", error));
+    next(new ApiError(500, "Internal server error", error));
   }
 };
 
-export {
-  createAddress,
-  getAddresses,
-  updateAddress,
-  deleteAddress,
+const getAddresses = async (req, res, next) => {
+    try {
+        const address = await Address.findOne({ user: req.user.id });
+        if (!address) {
+            return next(new ApiError(404, "No addresses found"));
+        }
+        res.status(200).json(new ApiResponse(200, address.addresses, "Addresses retrieved successfully")); 
+    } catch (error) {
+        next(new ApiError(500, "Internal server error", error));
+    }
 };
+
+const updateAddress = async (req, res, next) => {
+    try {
+        const { id: addressId } = req.params;
+        const { type, name, mobile, street, city, state, postalCode, country, houseNo, district, locality } = req.body;
+
+        let address = await Address.findOne({ user: req.user.id });
+
+        if (!address) {
+            return next(new ApiError(404, "Address not found"));
+        }
+
+        const addressIndex = address.addresses.findIndex((addr) => addr._id.toString() === addressId);
+
+        if (addressIndex === -1) {
+            return next(new ApiError(404, "Address not found"));
+        }
+
+        address.addresses[addressIndex] = { _id: addressId, type, name, mobile, street, city, district, state, postalCode, country, houseNo, locality };
+
+        await address.save();
+        res.status(200).json(new ApiResponse(200, address.addresses, "Address updated successfully")); 
+    } catch (error) {
+        next(new ApiError(500, "Internal server error", error));
+    }
+};
+
+const deleteAddress = async (req, res, next) => {
+    try {
+        const { id: addressId } = req.params;
+
+        const address = await Address.findOne({ user: req.user.id });
+
+        if (!address) {
+            return next(new ApiError(404, "No address record found for this user"));
+        }
+
+        const existingAddress = address.addresses.find((addr) => addr._id.toString() === addressId);
+        if (!existingAddress) {
+            return next(new ApiError(404, "Address not found"));
+        }
+
+        address.addresses = address.addresses.filter((addr) => addr._id.toString() !== addressId);
+        await address.save();
+
+        res.status(200).json(new ApiResponse(200, null, "Address deleted successfully"));
+    } catch (error) {
+        next(new ApiError(500, "Internal server error", error));
+    }
+};
+export { createAddress, getAddresses, updateAddress, deleteAddress };

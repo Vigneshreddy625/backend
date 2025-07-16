@@ -2,52 +2,91 @@ import mongoose from 'mongoose';
 import { User } from '../models/user.model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
-import { generateAccessAndRefreshToken } from '../utils/token.helper.js';
 import jwt from 'jsonwebtoken';
 
-// Register
+const generateAccessAndRefreshToken = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+
+    await user.save({ validateBeforeSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new ApiError(
+      500,
+      'Something went wrong while generating refresh and access token: ' +
+        error.message
+    );
+  }
+};
+
 const registerUser = async (req, res) => {
   const { email, password, fullName } = req.body;
 
-  if ([fullName, email, password].some(field => !field?.trim())) {
+  if ([fullName, email, password].some((field) => field?.trim() === '')) {
     throw new ApiError(400, 'All fields are required');
   }
 
-  const existedUser = await User.findOne({ email }).select('_id');
+  const existedUser = await User.findOne({ email });
 
   if (existedUser) {
     throw new ApiError(400, 'User already exists');
   }
 
-  const user = await User.create({ fullName, password, email });
+  const user = await User.create({
+    fullName,
+    password,
+    email,
+  });
 
-  const createdUser = {
-    _id: user._id,
-    fullName: user.fullName,
-    email: user.email
-  };
+  const createdUser = await User.findById(user._id).select(
+    '-password -refreshToken'
+  );
+
+  if (!createdUser) {
+    throw new ApiError(500, 'Something went wrong while registering user');
+  }
 
   return res
     .status(201)
     .json(new ApiResponse(201, createdUser, 'User registered successfully'));
 };
 
-// Login
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email) throw new ApiError(401, 'Email is required for login');
+  if (!email) {
+    throw new ApiError(401, 'Email is required for login');
+  }
 
   const user = await User.findOne({ email });
 
-  if (!user) throw new ApiError(401, 'User does not exist');
+  if (!user) {
+    throw new ApiError(401, 'User does not exist');
+  }
 
   const isPasswordValid = await user.comparePassword(password);
-  if (!isPasswordValid) throw new ApiError(401, 'Invalid credentials');
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user);
+  if (!isPasswordValid) {
+    throw new ApiError(401, 'Invalid credentials');
+  }
 
-  const { password: _, refreshToken: __, ...safeUser } = user.toObject();
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
+
+  const loggedInUser = await User.findById(user._id).select(
+    '-password -refreshToken'
+  );
 
   const options = {
     httpOnly: true,
@@ -59,26 +98,43 @@ const loginUser = async (req, res) => {
     .status(200)
     .cookie('accessToken', accessToken, options)
     .cookie('refreshToken', refreshToken, options)
-    .json(new ApiResponse(200, {
-      user: safeUser,
-      accessToken,
-      refreshToken
-    }, 'User logged in successfully'));
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken,
+        },
+        'User logged in successfully'
+      )
+    );
 };
 
-// Get current user
 const getCurrentUser = async (req, res) => {
-  return res.status(200).json(
-    new ApiResponse(200, req.user || null, 'Current user fetched successfully')
-  );
+  if (!req.user) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, 'No user logged in'));
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, req.user, 'Current user fetched successfully'));
 };
 
-// Logout
+
 const logoutUser = async (req, res) => {
   await User.findByIdAndUpdate(
     req.user._id,
-    { $unset: { refreshToken: 1 } },
-    { new: true }
+    {
+      $unset: {
+        refreshToken: 1,
+      },
+    },
+    {
+      new: true,
+    }
   );
 
   const options = {
@@ -94,70 +150,111 @@ const logoutUser = async (req, res) => {
     .json(new ApiResponse(200, {}, 'User logged out successfully'));
 };
 
-// Refresh access token
 const refreshAccessToken = async (req, res) => {
-  const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+  const incomingRefreshToken =
+    req.cookies.refreshToken || req.body.refreshToken;
 
   if (!incomingRefreshToken) {
     throw new ApiError(401, 'Unauthorized request');
   }
 
   try {
-    const decoded = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
-    const user = await User.findById(decoded?._id).select('refreshToken email fullName');
+    const decodedToken = jwt.verify(
+      incomingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    );
 
-    if (!user || incomingRefreshToken !== user.refreshToken) {
-      throw new ApiError(401, 'Invalid or expired refresh token');
+    const user = await User.findById(decodedToken?._id);
+
+    console.log('Incoming Refresh Token:', incomingRefreshToken);
+    console.log('Stored Refresh Token:', user?.refreshToken);
+
+    if (!user) {
+      throw new ApiError(401, 'Invalid refresh token');
     }
 
-    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user);
+    if (incomingRefreshToken !== user?.refreshToken) {
+      throw new ApiError(401, 'Refresh token is expired or used');
+    }
 
     const options = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'None',
     };
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+      user._id
+    );
 
     return res
       .status(200)
       .cookie('accessToken', accessToken, options)
       .cookie('refreshToken', refreshToken, options)
-      .json(new ApiResponse(200, { accessToken, refreshToken }, 'Token refreshed'));
+      .json(
+        new ApiResponse(
+          200,
+          {
+            accessToken,
+            refreshToken,
+          },
+          'Access token refreshed successfully'
+        )
+      );
   } catch (error) {
     throw new ApiError(401, error?.message || 'Invalid refresh token');
   }
 };
 
-// Delete user
 const deleteUser = async (req, res, next) => {
   try {
+    console.log("Delete user request received", { params: req.params, user: req.user });
+    
     const { id: userId } = req.params;
+    console.log("User ID to delete:", userId);
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return next(new ApiError(400, 'Invalid user ID'));
+      return next(new ApiError(400, "Invalid user ID"));
     }
 
     if (!req.user) {
-      return next(new ApiError(401, 'Authentication required'));
+      console.error("req.user is undefined or null");
+      return next(new ApiError(401, "Authentication required"));
     }
 
+    console.log("Authenticated user:", {
+      id: req.user._id,
+      role: req.user.role
+    });
+
     const user = await User.findById(userId);
+    console.log("User found:", user ? true : false);
+
     if (!user) {
-      return next(new ApiError(404, 'User not found'));
+      return next(new ApiError(404, "No User Found"));
     }
 
     const requesterId = req.user._id.toString();
-    const isAdmin = req.user.role === 'admin';
+    const targetId = userId.toString();
+    
+    console.log("Comparing IDs:", {
+      requesterId,
+      targetId,
+      isAdmin: req.user.role === "admin"
+    });
 
-    if (requesterId !== userId && !isAdmin) {
-      return next(new ApiError(403, 'Unauthorized to delete this user'));
+    if (requesterId !== targetId && req.user.role !== "admin") {
+      return next(new ApiError(403, "You are not authorized to delete this user"));
     }
 
+    console.log("Permission check passed, proceeding with deletion");
+    
     await user.deleteOne();
+    console.log("User deleted successfully");
 
-    return res.status(200).json(new ApiResponse(200, null, 'User deleted successfully'));
+    res.status(200).json(new ApiResponse(200, null, "User deleted successfully"));
   } catch (error) {
-    next(new ApiError(500, 'Internal server error', error));
+    console.error("Error in deleteUser:", error);
+    next(new ApiError(500, "Internal server error", error));
   }
 };
 
