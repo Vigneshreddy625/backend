@@ -2,61 +2,18 @@ import { Cart } from "../models/cart.model.js";
 import { Product } from "../models/product.model.js";
 import mongoose from "mongoose";
 import { validationResult } from "express-validator";
+import { SHIPPING_OPTIONS } from "../constants.js";
+import { createEmptyCart } from "../utils/cart.helper.js";
+import { getOrCreateCart } from "../utils/cart.helper.js";
+import { calculateCartTotals } from "../utils/cart.helper.js";
+import { handleError } from "../utils/cart.helper.js";
+import { isValidObjectId } from "../utils/cart.helper.js";
 
-function isValidObjectId(id) {
-  return mongoose.Types.ObjectId.isValid(id);
-}
-
-async function populateCart(cart) {
-  return await cart.populate("items.product"); 
-}
-
-async function getOrCreateCart(userId) {
-  let cart = await Cart.findOne({ user: userId });
-  if (!cart) {
-    cart = new Cart({
-      user: userId,
-      items: [],
-      shipping: { method: "Standard", cost: 5.99 },
-      promoCode: { code: null, discount: 0, discountType: "amount" },
-    });
-    await cart.save();
-  }
-  return cart;
-}
-
-async function calculateCartTotals(cart) {
-  await populateCart(cart);
-  const subtotal = cart.items.reduce((total, item) => total + item.product.price * item.quantity, 0);
-  const taxRate = 0.07;
-  const tax = subtotal * taxRate;
-  let discount = 0;
-  if (cart.promoCode?.code) {
-    discount = cart.promoCode.discountType === "percentage"
-      ? (subtotal * cart.promoCode.discount) / 100
-      : cart.promoCode.discount;
-  }
-  const shippingCost = cart.shipping?.cost || 0;
-  const total = Math.max(0, subtotal + tax + shippingCost - discount);
-  cart.subtotal = parseFloat(subtotal.toFixed(2));
-  cart.tax = parseFloat(tax.toFixed(2));
-  cart.total = parseFloat(total.toFixed(2));
-  return cart;
-}
-
-function handleError(error, res, operation) {
-  console.error(`Error ${operation}:`, error);
-  return res.status(error.statusCode || 500).json({
-    message: error.message || `Failed to ${operation}`,
-    error: process.env.NODE_ENV === "development" ? error.toString() : undefined,
-  });
-}
 
 export async function getUserCart(req, res) {
   try {
     let cart = await getOrCreateCart(req.user.id);
     await calculateCartTotals(cart);
-    cart = await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "fetch cart");
@@ -64,59 +21,50 @@ export async function getUserCart(req, res) {
 }
 
 export async function addItem(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { productId } = req.body;
+  const userId = req.user.id;
+
+  if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
+
+  const product = await Product.findById(productId);
+  if (!product) return res.status(404).json({ message: "Product not found" });
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const { productId } = req.body;  // 🔥 Only `productId` is sent, default quantity is 1
-    const userId = req.user.id;
-
-    if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
-
-    const product = await Product.findById(productId);
-    if (!product) return res.status(404).json({ message: "Product not found" });
-
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      let cart = await Cart.findOne({ user: userId }).session(session);
-      if (!cart) {
-        cart = new Cart({
-          user: userId,
-          items: [],
-          shipping: { method: "Standard", cost: 5.99 },
-          promoCode: { code: null, discount: 0, discountType: "amount" },
-        });
-      }
-
-      const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
-      if (itemIndex > -1) {
-        cart.items[itemIndex].quantity += 1;
-      } else {
-        cart.items.push({ product: productId, quantity: 1 });
-      }
-
-      await calculateCartTotals(cart);
-      await cart.save({ session });
-      await session.commitTransaction();
-      session.endSession();
-
-      cart = await populateCart(cart);
-      return res.status(200).json(cart);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      throw err;
+    let cart = await Cart.findOne({ user: userId }).session(session);
+    if (!cart) {
+      cart = createEmptyCart(userId);
     }
+
+    const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
+    if (itemIndex > -1) {
+      cart.items[itemIndex].quantity += 1;
+    } else {
+      cart.items.push({ product: productId, quantity: 1 });
+    }
+
+    await calculateCartTotals(cart);
+    await cart.save({ session });
+    await session.commitTransaction();
+
+    return res.status(200).json(cart);
   } catch (error) {
+    await session.abortTransaction();
     return handleError(error, res, "add item");
+  } finally {
+    session.endSession();
   }
 }
 
 export async function updateItemQuantity(req, res) {
   try {
     const { productId, quantity } = req.body;
+
     if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
     if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ message: "Invalid quantity" });
 
@@ -132,7 +80,6 @@ export async function updateItemQuantity(req, res) {
 
     await calculateCartTotals(cart);
     await cart.save();
-    cart = await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "update item quantity");
@@ -142,14 +89,22 @@ export async function updateItemQuantity(req, res) {
 export async function removeItem(req, res) {
   try {
     const { productId } = req.params;
-    if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
 
-    let cart = await getOrCreateCart(req.user.id);
-    cart.items = cart.items.filter(item => item.product.toString() !== productId);
+    if (!isValidObjectId(productId)) {
+      return res.status(400).json({ message: "Invalid product ID" });
+    }
+
+    const cart = await Cart.findOneAndUpdate(
+      { user: req.user.id },
+      { $pull: { items: { product: productId } } },
+      { new: true }
+    );
+
+    if (!cart) return res.status(404).json({ message: "Cart not found" });
 
     await calculateCartTotals(cart);
     await cart.save();
-    cart = await populateCart(cart);
+
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "remove item");
@@ -168,7 +123,6 @@ export async function applyPromoCode(req, res) {
 
     await calculateCartTotals(cart);
     await cart.save();
-    cart = await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "apply promo code");
@@ -178,16 +132,13 @@ export async function applyPromoCode(req, res) {
 export async function updateShipping(req, res) {
   try {
     const { method } = req.body;
-    const shippingOptions = { Standard: 5.99, Express: 11.99 };
-
-    if (!shippingOptions[method]) return res.status(400).json({ message: "Invalid shipping method" });
+    if (!SHIPPING_OPTIONS[method]) return res.status(400).json({ message: "Invalid shipping method" });
 
     let cart = await getOrCreateCart(req.user.id);
-    cart.shipping = { method, cost: shippingOptions[method] };
+    cart.shipping = { method, cost: SHIPPING_OPTIONS[method] };
 
     await calculateCartTotals(cart);
     await cart.save();
-    cart = await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "update shipping");
@@ -199,11 +150,10 @@ export async function clearCart(req, res) {
     let cart = await getOrCreateCart(req.user.id);
     cart.items = [];
     cart.promoCode = { code: null, discount: 0, discountType: "amount" };
-    cart.shipping = { method: "Standard", cost: 5.99 };
+    cart.shipping = { method: "Standard", cost: SHIPPING_OPTIONS.Standard };
 
     await calculateCartTotals(cart);
     await cart.save();
-    cart = await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "clear cart");
