@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 import { Cart } from "../models/cart.model.js";
+import { TAX_RATE } from "../constants.js"
+import { SHIPPING_OPTIONS } from "../constants.js";
 
 export function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
