@@ -159,6 +159,7 @@ export async function removeItem(req, res) {
     await calculateCartTotals(cart);
     await cart.save();
 
+    // Optional: Only populate if needed on frontend
     const populatedCart = await populateCart(cart);
 
     return res.status(200).json(populatedCart);
@@ -166,6 +167,7 @@ export async function removeItem(req, res) {
     return handleError(error, res, "remove item");
   }
 }
+
 
 export async function applyPromoCode(req, res) {
   try {
