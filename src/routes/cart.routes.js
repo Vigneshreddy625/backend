@@ -5,7 +5,6 @@ import {
   updateItemQuantity,
   removeItem,
   applyPromoCode,
-  updateShipping,
   clearCart,
 } from "../controllers/cart.controller.js";
 
@@ -20,7 +19,6 @@ router.route("/add").post(addItem);
 router.route("/update").put(updateItemQuantity);
 router.route("/remove/:productId").delete(removeItem);
 router.route("/promo").post(applyPromoCode);
-router.route("/shipping").put(updateShipping);
 router.route("/clear").delete(clearCart);
 
 export default router;

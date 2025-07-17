@@ -27,20 +27,35 @@ async function getOrCreateCart(userId) {
 
 async function calculateCartTotals(cart) {
   await populateCart(cart);
-  const subtotal = cart.items.reduce((total, item) => total + item.product.price * item.quantity, 0);
+
+  const subtotal = cart.items.reduce(
+    (total, item) => total + item.product.price * item.quantity,
+    0
+  );
+
   const taxRate = 0.07;
   const tax = subtotal * taxRate;
+
   let discount = 0;
   if (cart.promoCode?.code) {
-    discount = cart.promoCode.discountType === "percentage"
-      ? (subtotal * cart.promoCode.discount) / 100
-      : cart.promoCode.discount;
+    discount =
+      cart.promoCode.discountType === "percentage"
+        ? (subtotal * cart.promoCode.discount) / 100
+        : cart.promoCode.discount;
   }
-  const shippingCost = cart.shipping?.cost || 0;
+
+  let shippingCost = subtotal > 1000 ? 0 : 5.99;
+
+  cart.shipping = {
+    cost: shippingCost, 
+  };
+
   const total = Math.max(0, subtotal + tax + shippingCost - discount);
+
   cart.subtotal = parseFloat(subtotal.toFixed(2));
   cart.tax = parseFloat(tax.toFixed(2));
   cart.total = parseFloat(total.toFixed(2));
+
   return cart;
 }
 
@@ -85,7 +100,7 @@ export async function addItem(req, res) {
         cart = new Cart({
           user: userId,
           items: [],
-          shipping: { method: "Standard", cost: 5.99 },
+          shipping: { cost: 5.99 },
           promoCode: { code: null, discount: 0, discountType: "amount" },
         });
       }
@@ -159,7 +174,6 @@ export async function removeItem(req, res) {
     await calculateCartTotals(cart);
     await cart.save();
 
-    // Optional: Only populate if needed on frontend
     const populatedCart = await populateCart(cart);
 
     return res.status(200).json(populatedCart);
@@ -188,31 +202,12 @@ export async function applyPromoCode(req, res) {
   }
 }
 
-export async function updateShipping(req, res) {
-  try {
-    const { method } = req.body;
-    const shippingOptions = { Standard: 5.99, Express: 11.99 };
-
-    if (!shippingOptions[method]) return res.status(400).json({ message: "Invalid shipping method" });
-
-    let cart = await getOrCreateCart(req.user.id);
-    cart.shipping = { method, cost: shippingOptions[method] };
-
-    await calculateCartTotals(cart);
-    await cart.save();
-    cart = await populateCart(cart);
-    return res.status(200).json(cart);
-  } catch (error) {
-    return handleError(error, res, "update shipping");
-  }
-}
-
 export async function clearCart(req, res) {
   try {
     let cart = await getOrCreateCart(req.user.id);
     cart.items = [];
     cart.promoCode = { code: null, discount: 0, discountType: "amount" };
-    cart.shipping = { method: "Standard", cost: 5.99 };
+    cart.shipping = { cost: 5.99 };
 
     await calculateCartTotals(cart);
     await cart.save();

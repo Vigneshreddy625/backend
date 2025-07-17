@@ -20,21 +20,17 @@ const cartSchema = new mongoose.Schema(
     ],
     promoCode: {
       code: { type: String, default: null },
-      discount: { type: Number, default: 0 }, 
+      discount: { type: Number, default: 0 },
+      discountType: { type: String, enum: ['amount', 'percentage'], default: 'amount' } 
     },
     shipping: {
-      method: {
-        type: String,
-        enum: ["Standard", "Express"],
-        default: "Standard",
-      },
-      cost: { type: Number, default: 5.99 }, 
+      cost: { type: Number, default: 5.99 },
     },
-    subtotal: { type: Number, default: 0 }, 
-    tax: { type: Number, default: 0 }, 
-    total: { type: Number, default: 0 }, 
+    subtotal: { type: Number, default: 0 },
+    tax: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-export const Cart = mongoose.model("Cart", cartSchema)
+export const Cart = mongoose.model("Cart", cartSchema);
