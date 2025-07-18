@@ -10,6 +10,7 @@ import {
   removePromoCode,
   validateCoupon
 } from "../controllers/cart.controller.js";
+import { body } from "express-validator";
 
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
