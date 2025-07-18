@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "seed": "node src/seeder.js"
+    "pseed": "node src/seeder.product.js",
+    "cseed": "node src/seeder.coupon.js"
   },
   "keywords": [
     "javascript"
@@ -32,6 +33,6 @@
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
     "mongoose": "^8.10.1",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.7"
   }
 }

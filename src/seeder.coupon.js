@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import connectDB from "./db/db.js";
-import { Product } from "./models/Product.model.js";
-import Products from "./data/Products.js";
+import { Coupon } from "./models/coupon.model.js"
+import Coupons from "./data/Coupon.js"
 import lodash from "lodash"; 
 
 const { chunk } = lodash; 
@@ -13,21 +13,21 @@ const seedDatabase = async () => {
   try {
     await connectDB();
 
-    await Product.deleteMany();
-    console.log("Existing products removed");
+    await Coupon.deleteMany();
+    console.log("Existing Coupons removed");
 
     const chunkSize = 10;
-    const chunkedData = chunk(Products, chunkSize); 
+    const chunkedData = chunk(Coupons, chunkSize); 
 
     for (const batch of chunkedData) {
-      await Product.insertMany(batch);
+      await Coupon.insertMany(batch);
       console.log(`Inserted ${batch.length} products`);
     }
 
-    console.log("All products inserted successfully!");
+    console.log("All Coupons inserted successfully!");
     mongoose.connection.close();
   } catch (error) {
-    console.error("Error inserting products:", error);
+    console.error("Error inserting Coupons:", error);
     process.exit(1);
   }
 };

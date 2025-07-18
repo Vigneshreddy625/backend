@@ -1,5 +1,6 @@
 import { Cart } from "../models/cart.model.js";
 import { Product } from "../models/product.model.js";
+import { Coupon } from "../models/coupon.model.js";
 import mongoose from "mongoose";
 import { validationResult } from "express-validator";
 
@@ -28,8 +29,8 @@ async function getOrCreateCart(userId) {
 async function calculateCartTotals(cart) {
   await populateCart(cart);
 
-  const subtotal = cart.items.reduce(
-    (total, item) => total + item.product.price * item.quantity,
+  const subtotal = state.cart.items.reduce(
+    (total, item) => total + Number((item.product.price * item.quantity).toFixed(2)),
     0
   );
 
@@ -100,7 +101,7 @@ export async function addItem(req, res) {
         cart = new Cart({
           user: userId,
           items: [],
-          shipping: { cost: 5.99 },
+          shipping: { cost: 99 },
           promoCode: { code: null, discount: 0, discountType: "amount" },
         });
       }
@@ -182,20 +183,61 @@ export async function removeItem(req, res) {
   }
 }
 
-
 export async function applyPromoCode(req, res) {
   try {
-    const { code, discount, discountType } = req.body;
-    if (!code || discount == null || !["amount", "percentage"].includes(discountType)) {
-      return res.status(400).json({ message: "Invalid promo code details" });
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ message: "Promo code is required" });
     }
 
-    let cart = await getOrCreateCart(req.user.id);
-    cart.promoCode = { code, discount, discountType };
+    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+    if (!coupon) {
+      return res.status(404).json({ message: "Invalid or expired promo code" });
+    }
+
+    if (new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: "Promo code has expired" });
+    }
+
+    const userId = req.user.id;
+    let cart = await getOrCreateCart(userId);
+    await populateCart(cart);
+
+    const subtotal = cart.items.reduce(
+      (total, item) => total + item.product.price * item.quantity,
+      0
+    );
+
+    if (subtotal < coupon.minOrderAmount) {
+      return res.status(400).json({
+        message: `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`,
+      });
+    }
+
+    if (coupon.usersUsed.includes(userId)) {
+      return res.status(400).json({ message: "You have already used this promo code" });
+    }
+
+    const discountValue =
+      coupon.discountType === "percentage"
+        ? (subtotal * coupon.discountValue) / 100
+        : coupon.discountValue;
+
+    cart.promoCode = {
+    code: coupon.code,
+    discount: coupon.discountValue,
+    discountType: coupon.discountType === "fixed" ? "amount" : "percentage",
+  };
+
 
     await calculateCartTotals(cart);
+
+    coupon.usersUsed.push(userId);
+    await coupon.save();
+
     await cart.save();
     cart = await populateCart(cart);
+
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "apply promo code");
