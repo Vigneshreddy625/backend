@@ -29,7 +29,7 @@ async function getOrCreateCart(userId) {
 async function calculateCartTotals(cart) {
   await populateCart(cart);
 
-  const subtotal = state.cart.items.reduce(
+  const subtotal = cart.items.reduce(
     (total, item) => total + Number((item.product.price * item.quantity).toFixed(2)),
     0
   );
