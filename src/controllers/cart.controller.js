@@ -324,6 +324,7 @@ export async function applyPromoCode(req, res) {
     return res.status(200).json({
       message: "Promo code applied successfully",
       cart,
+      appliedCoupon: cart.promoCode,
       savings: cart.discount
     });
   } catch (error) {
