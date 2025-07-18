@@ -48,6 +48,7 @@ async function calculateCartTotals(cart) {
   let shippingCost = subtotal > 1000 ? 0 : 5.99;
 
   cart.shipping = {
+    method: cart.shipping?.method || "Standard",
     cost: shippingCost, 
   };
 
@@ -55,6 +56,7 @@ async function calculateCartTotals(cart) {
 
   cart.subtotal = parseFloat(subtotal.toFixed(2));
   cart.tax = parseFloat(tax.toFixed(2));
+  cart.discount = parseFloat(discount.toFixed(2));
   cart.total = parseFloat(total.toFixed(2));
 
   return cart;
@@ -101,7 +103,7 @@ export async function addItem(req, res) {
         cart = new Cart({
           user: userId,
           items: [],
-          shipping: { cost: 99 },
+          shipping: { method: "Standard", cost: 5.99 },
           promoCode: { code: null, discount: 0, discountType: "amount" },
         });
       }
@@ -183,6 +185,80 @@ export async function removeItem(req, res) {
   }
 }
 
+// NEW: Get available coupons for user
+export async function getAvailableCoupons(req, res) {
+  try {
+    const userId = req.user.id;
+    const cart = await getOrCreateCart(userId);
+    await populateCart(cart);
+    
+    const subtotal = cart.items.reduce(
+      (total, item) => total + item.product.price * item.quantity,
+      0
+    );
+
+    // Query works with both old and new model structure
+    const query = { 
+      expiryDate: { $gte: new Date() },
+      usersUsed: { $ne: userId }
+    };
+    
+    // Add isActive check only if field exists in your model
+    // If you haven't added isActive field yet, this will be ignored
+    if (await Coupon.findOne().select('isActive').lean()) {
+      query.isActive = true;
+    }
+
+    const coupons = await Coupon.find(query);
+
+    const formattedCoupons = coupons.map(coupon => {
+      const canApply = subtotal >= coupon.minOrderAmount;
+      const shopMoreAmount = canApply ? 0 : coupon.minOrderAmount - subtotal;
+      
+      let savings = 0;
+      if (canApply) {
+        savings = coupon.discountType === "percentage"
+          ? Math.min(
+              (subtotal * coupon.discountValue) / 100, 
+              coupon.maxDiscountAmount || Infinity
+            )
+          : coupon.discountValue;
+      }
+
+      return {
+        id: coupon._id,
+        code: coupon.code,
+        discount: coupon.discountType === "percentage" 
+          ? `${coupon.discountValue}% off`
+          : `Rs. ${coupon.discountValue} off`,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        minPurchase: coupon.minOrderAmount,
+        maxDiscountAmount: coupon.maxDiscountAmount,
+        expiryDate: new Date(coupon.expiryDate).toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        }),
+        expiryTime: "11:59 PM",
+        canApply,
+        shopMoreAmount,
+        savings: Math.round(savings),
+        isApplied: cart.promoCode?.code === coupon.code
+      };
+    });
+
+    return res.status(200).json({
+      coupons: formattedCoupons,
+      currentSubtotal: subtotal,
+      appliedCoupon: cart.promoCode?.code || null
+    });
+  } catch (error) {
+    return handleError(error, res, "fetch available coupons");
+  }
+}
+
+// ENHANCED: Apply promo code with better validation
 export async function applyPromoCode(req, res) {
   try {
     const { code } = req.body;
@@ -192,7 +268,7 @@ export async function applyPromoCode(req, res) {
 
     const coupon = await Coupon.findOne({ code: code.toUpperCase() });
     if (!coupon) {
-      return res.status(404).json({ message: "Invalid or expired promo code" });
+      return res.status(404).json({ message: "Invalid promo code" });
     }
 
     if (new Date() > new Date(coupon.expiryDate)) {
@@ -200,6 +276,11 @@ export async function applyPromoCode(req, res) {
     }
 
     const userId = req.user.id;
+    
+    if (coupon.usersUsed.includes(userId)) {
+      return res.status(400).json({ message: "You have already used this promo code" });
+    }
+
     let cart = await getOrCreateCart(userId);
     await populateCart(cart);
 
@@ -211,24 +292,26 @@ export async function applyPromoCode(req, res) {
     if (subtotal < coupon.minOrderAmount) {
       return res.status(400).json({
         message: `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`,
+        minOrderAmount: coupon.minOrderAmount,
+        currentAmount: subtotal,
+        shopMoreAmount: coupon.minOrderAmount - subtotal
       });
     }
 
-    if (coupon.usersUsed.includes(userId)) {
-      return res.status(400).json({ message: "You have already used this promo code" });
+    // Remove previous coupon if exists
+    if (cart.promoCode?.code) {
+      const previousCoupon = await Coupon.findOne({ code: cart.promoCode.code });
+      if (previousCoupon) {
+        previousCoupon.usersUsed = previousCoupon.usersUsed.filter(id => id.toString() !== userId);
+        await previousCoupon.save();
+      }
     }
 
-    const discountValue =
-      coupon.discountType === "percentage"
-        ? (subtotal * coupon.discountValue) / 100
-        : coupon.discountValue;
-
     cart.promoCode = {
-    code: coupon.code,
-    discount: coupon.discountValue,
-    discountType: coupon.discountType === "fixed" ? "amount" : "percentage",
-  };
-
+      code: coupon.code,
+      discount: coupon.discountValue,
+      discountType: coupon.discountType === "fixed" ? "amount" : "percentage",
+    };
 
     await calculateCartTotals(cart);
 
@@ -238,18 +321,119 @@ export async function applyPromoCode(req, res) {
     await cart.save();
     cart = await populateCart(cart);
 
-    return res.status(200).json(cart);
+    return res.status(200).json({
+      message: "Promo code applied successfully",
+      cart,
+      savings: cart.discount
+    });
   } catch (error) {
     return handleError(error, res, "apply promo code");
   }
 }
 
+// NEW: Remove promo code
+export async function removePromoCode(req, res) {
+  try {
+    const userId = req.user.id;
+    let cart = await getOrCreateCart(userId);
+    
+    if (cart.promoCode?.code) {
+      const coupon = await Coupon.findOne({ code: cart.promoCode.code });
+      if (coupon) {
+        coupon.usersUsed = coupon.usersUsed.filter(id => id.toString() !== userId);
+        await coupon.save();
+      }
+    }
+
+    cart.promoCode = { code: null, discount: 0, discountType: "amount" };
+    await calculateCartTotals(cart);
+    await cart.save();
+    cart = await populateCart(cart);
+    
+    return res.status(200).json({
+      message: "Promo code removed successfully",
+      cart
+    });
+  } catch (error) {
+    return handleError(error, res, "remove promo code");
+  }
+}
+
+// NEW: Validate coupon without applying
+export async function validateCoupon(req, res) {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ message: "Promo code is required" });
+    }
+
+    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+    if (!coupon) {
+      return res.status(404).json({ message: "Invalid promo code" });
+    }
+
+    if (new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: "Promo code has expired" });
+    }
+
+    const userId = req.user.id;
+    
+    if (coupon.usersUsed.includes(userId)) {
+      return res.status(400).json({ message: "You have already used this promo code" });
+    }
+
+    const cart = await getOrCreateCart(userId);
+    await populateCart(cart);
+
+    const subtotal = cart.items.reduce(
+      (total, item) => total + item.product.price * item.quantity,
+      0
+    );
+
+    const canApply = subtotal >= coupon.minOrderAmount;
+    let savings = 0;
+    
+    if (canApply) {
+      savings = coupon.discountType === "percentage"
+        ? Math.min((subtotal * coupon.discountValue) / 100, coupon.maxDiscountAmount || Infinity)
+        : coupon.discountValue;
+    }
+
+    return res.status(200).json({
+      valid: true,
+      coupon: {
+        code: coupon.code,
+        discount: coupon.discountType === "percentage" 
+          ? `${coupon.discountValue}% off`
+          : `Rs. ${coupon.discountValue} off`,
+        minPurchase: coupon.minOrderAmount,
+        canApply,
+        savings: Math.round(savings),
+        shopMoreAmount: canApply ? 0 : coupon.minOrderAmount - subtotal
+      }
+    });
+  } catch (error) {
+    return handleError(error, res, "validate coupon");
+  }
+}
+
 export async function clearCart(req, res) {
   try {
-    let cart = await getOrCreateCart(req.user.id);
+    const userId = req.user.id;
+    let cart = await getOrCreateCart(userId);
+    
+    // Remove coupon usage if exists
+    if (cart.promoCode?.code) {
+      const coupon = await Coupon.findOne({ code: cart.promoCode.code });
+      if (coupon) {
+        coupon.usersUsed = coupon.usersUsed.filter(id => id.toString() !== userId);
+        await coupon.save();
+      }
+    }
+
     cart.items = [];
     cart.promoCode = { code: null, discount: 0, discountType: "amount" };
-    cart.shipping = { cost: 5.99 };
+    cart.shipping = { method: "Standard", cost: 5.99 };
 
     await calculateCartTotals(cart);
     await cart.save();
