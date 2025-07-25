@@ -10,7 +10,7 @@ function isValidObjectId(id) {
 async function populateCart(cart) {
   return await cart.populate({
     path: "items.product",
-    select: "name price imageUrl stock"
+    select: "price stockStatus title image originalPrice, colors"
   });
 }
 
