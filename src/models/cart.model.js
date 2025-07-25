@@ -18,11 +18,6 @@ const cartSchema = new mongoose.Schema(
         quantity: { type: Number, required: true, min: 1 },
       },
     ],
-    promoCode: {
-      code: { type: String, default: null },
-      discount: { type: Number, default: 0 },
-      discountType: { type: String, enum: ['amount', 'percentage'], default: 'amount' } 
-    },
     shipping: {
       cost: { type: Number, default: 5.99 },
     },

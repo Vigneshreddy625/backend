@@ -30,3 +30,10 @@ export const verifyJWT = async (req, res, next) => {
     return next();
   }
 };
+
+export const isAdmin = (req, res, next) => {
+  if(!req.user || req.user,role !== "admin"){
+    throw new ApiError(403, "Admin access only");
+  }
+  next();
+}

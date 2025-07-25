@@ -8,7 +8,10 @@ function isValidObjectId(id) {
 }
 
 async function populateCart(cart) {
-  return await cart.populate("items.product"); 
+  return await cart.populate({
+    path: "items.product",
+    select: "name price imageUrl stock"
+  });
 }
 
 async function getOrCreateCart(userId) {
@@ -17,54 +20,48 @@ async function getOrCreateCart(userId) {
     cart = new Cart({
       user: userId,
       items: [],
-      shipping: { method: "Standard", cost: 5.99 },
+      shipping: { method: "Standard", cost: 5.99 }
     });
     await cart.save();
   }
   return cart;
 }
 
-async function calculateCartTotals(cart) {
-  await populateCart(cart);
+async function calculateCartTotals(cart, isPopulated = false) {
+  if (!isPopulated) {
+    await populateCart(cart);
+  }
 
-  const subtotal = cart.items.reduce(
-    (total, item) => total + Number((item.product.price * item.quantity).toFixed(2)),
-    0
-  );
+  const subtotal = cart.items.reduce((total, item) => {
+    return total + item.product.price * item.quantity;
+  }, 0);
 
   const taxRate = 0.07;
   const tax = subtotal * taxRate;
+  const shippingCost = subtotal > 1000 ? 0 : 5.99;
 
-  // Free shipping for orders over ₹1000
-  let shippingCost = subtotal > 1000 ? 0 : 5.99;
-
-  cart.shipping = {
-    method: cart.shipping?.method || "Standard",
-    cost: shippingCost, 
-  };
-
-  const total = subtotal + tax + shippingCost;
-
-  cart.subtotal = parseFloat(subtotal.toFixed(2));
-  cart.tax = parseFloat(tax.toFixed(2));
-  cart.total = parseFloat(total.toFixed(2));
+  cart.subtotal = +subtotal.toFixed(2);
+  cart.tax = +tax.toFixed(2);
+  cart.total = +(subtotal + tax + shippingCost).toFixed(2);
+  cart.shipping.cost = shippingCost;
 
   return cart;
 }
 
 function handleError(error, res, operation) {
-  console.error(`Error ${operation}:`, error);
+  console.error(`❌ Error during ${operation}:`, error);
   return res.status(error.statusCode || 500).json({
     message: error.message || `Failed to ${operation}`,
     error: process.env.NODE_ENV === "development" ? error.toString() : undefined,
   });
 }
 
+
 export async function getUserCart(req, res) {
   try {
     let cart = await getOrCreateCart(req.user.id);
-    await calculateCartTotals(cart);
-    cart = await populateCart(cart);
+    await populateCart(cart);
+    await calculateCartTotals(cart, true);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "fetch cart");
@@ -76,46 +73,37 @@ export async function addItem(req, res) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { productId } = req.body;  
+    const { productId } = req.body;
     const userId = req.user.id;
 
-    if (!isValidObjectId(productId)) return res.status(400).json({ message: "Invalid product ID" });
+    if (!isValidObjectId(productId)) {
+      return res.status(400).json({ message: "Invalid product ID" });
+    }
 
-    const product = await Product.findById(productId);
+    const product = await Product.findById(productId).select("price stockStatus title image originalPrice, colors");
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      let cart = await Cart.findOne({ user: userId }).session(session);
-      if (!cart) {
-        cart = new Cart({
-          user: userId,
-          items: [],
-          shipping: { method: "Standard", cost: 5.99 },
-        });
-      }
-
-      const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
-      if (itemIndex > -1) {
-        cart.items[itemIndex].quantity += 1;
-      } else {
-        cart.items.push({ product: productId, quantity: 1 });
-      }
-
-      await calculateCartTotals(cart);
-      await cart.save({ session });
-      await session.commitTransaction();
-      session.endSession();
-
-      cart = await populateCart(cart);
-      return res.status(200).json(cart);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      throw err;
+    let cart = await Cart.findOne({ user: userId });
+    if (!cart) {
+      cart = new Cart({
+        user: userId,
+        items: [],
+        shipping: { method: "Standard", cost: 5.99 }
+      });
     }
+
+    const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
+    if (itemIndex > -1) {
+      cart.items[itemIndex].quantity += 1;
+    } else {
+      cart.items.push({ product: productId, quantity: 1 });
+    }
+
+    await populateCart(cart);
+    await calculateCartTotals(cart, true);
+    await cart.save();
+
+    return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "add item");
   }
@@ -137,9 +125,9 @@ export async function updateItemQuantity(req, res) {
       item.quantity = quantity;
     }
 
-    await calculateCartTotals(cart);
+    await populateCart(cart);
+    await calculateCartTotals(cart, true);
     await cart.save();
-    cart = await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "update item quantity");
@@ -153,22 +141,19 @@ export async function removeItem(req, res) {
       return res.status(400).json({ message: "Invalid product ID" });
     }
 
-    const cart = await Cart.findOneAndUpdate(
+    let cart = await Cart.findOneAndUpdate(
       { user: req.user.id },
       { $pull: { items: { product: productId } } },
       { new: true }
     );
 
-    if (!cart) {
-      return res.status(404).json({ message: "Cart not found" });
-    }
+    if (!cart) return res.status(404).json({ message: "Cart not found" });
 
-    await calculateCartTotals(cart);
+    await populateCart(cart);
+    await calculateCartTotals(cart, true);
     await cart.save();
 
-    const populatedCart = await populateCart(cart);
-
-    return res.status(200).json(populatedCart);
+    return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "remove item");
   }
@@ -178,13 +163,13 @@ export async function clearCart(req, res) {
   try {
     const userId = req.user.id;
     let cart = await getOrCreateCart(userId);
-    
+
     cart.items = [];
     cart.shipping = { method: "Standard", cost: 5.99 };
 
     await calculateCartTotals(cart);
     await cart.save();
-    cart = await populateCart(cart);
+    await populateCart(cart);
     return res.status(200).json(cart);
   } catch (error) {
     return handleError(error, res, "clear cart");
