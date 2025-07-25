@@ -3,18 +3,18 @@ import { Product } from "../models/product.model.js";
 import mongoose from "mongoose";
 import { validationResult } from "express-validator";
 
-function isValidObjectId(id) {
+export function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
-async function populateCart(cart) {
+export async function populateCart(cart) {
   return await cart.populate({
     path: "items.product",
     select: "price stockStatus title image originalPrice, colors"
   });
 }
 
-async function getOrCreateCart(userId) {
+export async function getOrCreateCart(userId) {
   let cart = await Cart.findOne({ user: userId });
   if (!cart) {
     cart = new Cart({
@@ -27,7 +27,7 @@ async function getOrCreateCart(userId) {
   return cart;
 }
 
-async function calculateCartTotals(cart, isPopulated = false) {
+export async function calculateCartTotals(cart, isPopulated = false) {
   if (!isPopulated) {
     await populateCart(cart);
   }
