@@ -16,7 +16,7 @@ export const placeOrder = async (req, res) => {
     total,
     shipping,
     paymentMethod,
-    shippingAddress: clientShippingAddress
+    shippingAddress: clientShippingAddress 
   } = req.body;
 
   if (
@@ -27,21 +27,25 @@ export const placeOrder = async (req, res) => {
     tax === undefined ||
     total === undefined ||
     shipping === undefined ||
-    !clientShippingAddress
+    !clientShippingAddress ||
+    !clientShippingAddress.name ||
+    !clientShippingAddress.mobile ||
+    !clientShippingAddress.houseNo ||
+    !clientShippingAddress.locality ||
+    !clientShippingAddress.street ||
+    !clientShippingAddress.city ||
+    !clientShippingAddress.district ||
+    !clientShippingAddress.state ||
+    !clientShippingAddress.country ||
+    !clientShippingAddress.postalCode
   ) {
-    return res.status(400).json({ message: "Missing required order details." });
+    return res.status(400).json({ message: "Missing required order details or shipping address fields." });
   }
 
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const newAddress = new Address({
-      ...clientShippingAddress,
-      user: user,
-    });
-    const savedAddress = await newAddress.save({ session });
-
     const orderItems = items.map((item) => ({
       productId: item.productId,
       quantity: item.quantity,
@@ -56,8 +60,8 @@ export const placeOrder = async (req, res) => {
       tax: tax,
       total: total,
       shipping: shipping,
-      paymentMethod: "Cash on Delivery",
-      shippingAddress: savedAddress._id,
+      paymentMethod: "Cash on Delivery", 
+      shippingAddress: clientShippingAddress, 
       orderStatus: "Pending",
     });
 
@@ -65,8 +69,7 @@ export const placeOrder = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
-
-    await clearCartForUser(user);
+    await clearCartForUser(user); 
 
     res.status(201).json({
       success: true,
