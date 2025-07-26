@@ -10,7 +10,7 @@ export function isValidObjectId(id) {
 export async function populateCart(cart) {
   return await cart.populate({
     path: "items.product",
-    select: "price stockStatus title image originalPrice, colors"
+    select: "price stockStatus title image originalPrice colors"
   });
 }
 
@@ -80,7 +80,7 @@ export async function addItem(req, res) {
       return res.status(400).json({ message: "Invalid product ID" });
     }
 
-    const product = await Product.findById(productId).select("price stockStatus title image originalPrice, colors");
+    const product = await Product.findById(productId).select("price stockStatus title image originalPrice colors");
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     let cart = await Cart.findOne({ user: userId });

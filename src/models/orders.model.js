@@ -31,7 +31,7 @@ const orderSchema = new Schema(
       type: String,
       required: true,
       unique: true,
-      default: () => 'Order' + Date.now() + Math.random().toString(36).substring(2, 8),
+      default: () => 'O#' + Date.now() + Math.random().toString(36).substring(2, 8),
       index: true,
     },
     user: {
